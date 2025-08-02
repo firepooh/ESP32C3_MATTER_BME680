@@ -20,8 +20,6 @@
 #include <common_macros.h>
 
 // drivers implemented by this example
-#include <drivers/shtc3.h>
-#include <drivers/pir.h>
 
 static const char *TAG = "app_main";
 
@@ -179,6 +177,7 @@ extern "C" void app_main()
     ABORT_APP_ON_FAILURE(humidity_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create humidity_sensor endpoint"));
 
     // initialize temperature and humidity sensor driver (shtc3)
+#if 0    
     static shtc3_sensor_config_t shtc3_config = {
         .temperature = {
             .cb = temp_sensor_notification,
@@ -191,6 +190,7 @@ extern "C" void app_main()
     };
     err = shtc3_sensor_init(&shtc3_config);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to initialize temperature sensor driver"));
+#endif
 
     // add the occupancy sensor
     occupancy_sensor::config_t occupancy_sensor_config;
@@ -203,12 +203,14 @@ extern "C" void app_main()
     ABORT_APP_ON_FAILURE(occupancy_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create occupancy_sensor endpoint"));
 
     // initialize occupancy sensor driver (pir)
+#if 0    
     static pir_sensor_config_t pir_config = {
         .cb = occupancy_sensor_notification,
         .endpoint_id = endpoint::get_id(occupancy_sensor_ep),
     };
     err = pir_sensor_init(&pir_config);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to initialize occupancy sensor driver"));
+#endif
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     /* Set OpenThread platform config */
