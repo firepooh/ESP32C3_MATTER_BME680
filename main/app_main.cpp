@@ -12,6 +12,7 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
+#include <esp_matter_attribute.h>
 #include <esp_matter_ota.h>
 #include <nvs_flash.h>
 
@@ -21,12 +22,18 @@
 
 // drivers implemented by this example
 
+
+#define CONFIG_BASIC_INFORMATION_UPDATE_PRE
+//#define CONFIG_BASIC_INFORMATION_UPDATE_POST
+
+
 static const char *TAG = "app_main";
 
 using namespace esp_matter;
 using namespace esp_matter::attribute;
 using namespace esp_matter::endpoint;
 using namespace chip::app::Clusters;
+
 
 // Application cluster specification, 7.18.2.11. Temperature
 // represents a temperature on the Celsius scale with a resolution of 0.01°C.
@@ -152,6 +159,117 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return ESP_OK;
 }
 
+#if defined(CONFIG_BASIC_INFORMATION_UPDATE_POST)
+static esp_err_t update_basic_information_attributes()
+{
+    uint16_t endpoint_id = 0; // Root endpoint
+    esp_err_t err = ESP_OK;
+    
+    // ProductName 업데이트
+    esp_matter_attr_val_t product_name_val = esp_matter_char_str("ESP32_BME680_Sensor", strlen("ESP32_BME680_Sensor"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::ProductName::Id,
+                                       &product_name_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update ProductName: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // VendorName 업데이트 (필수)
+    esp_matter_attr_val_t vendor_name_val = esp_matter_char_str("MyCompany", strlen("MyCompany"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::VendorName::Id,
+                                       &vendor_name_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update VendorName: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // HardwareVersionString 업데이트 (필수)
+    esp_matter_attr_val_t hw_version_val = esp_matter_char_str("1.0", strlen("1.0"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::HardwareVersionString::Id,
+                                       &hw_version_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update HardwareVersionString: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // SoftwareVersionString 업데이트 (필수)
+    esp_matter_attr_val_t sw_version_val = esp_matter_char_str("1.0.0", strlen("1.0.0"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::SoftwareVersionString::Id,
+                                       &sw_version_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update SoftwareVersionString: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    ESP_LOGI(TAG, "Basic Information attributes updated successfully");
+    return ESP_OK;
+}
+#endif
+
+
+#if defined(CONFIG_BASIC_INFORMATION_UPDATE_PRE)
+static esp_err_t update_basic_information_attributes()
+{
+    uint16_t endpoint_id = 0; // Root endpoint
+    esp_err_t err = ESP_OK;
+    
+    // ProductName 업데이트
+    esp_matter_attr_val_t product_name_val = esp_matter_char_str("ESP32_BME680_Sensor", strlen("ESP32_BME680_Sensor"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::ProductName::Id,
+                                       &product_name_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update ProductName: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // VendorName 업데이트 (필수)
+    esp_matter_attr_val_t vendor_name_val = esp_matter_char_str("MyCompany", strlen("MyCompany"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::VendorName::Id,
+                                       &vendor_name_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update VendorName: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // HardwareVersionString 업데이트 (필수)
+    esp_matter_attr_val_t hw_version_val = esp_matter_char_str("1.0", strlen("1.0"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::HardwareVersionString::Id,
+                                       &hw_version_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update HardwareVersionString: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    // SoftwareVersionString 업데이트 (필수)
+    esp_matter_attr_val_t sw_version_val = esp_matter_char_str("1.0.0", strlen("1.0.0"));
+    err = esp_matter::attribute::update(endpoint_id,
+                                       BasicInformation::Id,
+                                       BasicInformation::Attributes::SoftwareVersionString::Id,
+                                       &sw_version_val);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update SoftwareVersionString: %s", esp_err_to_name(err));
+        return err;
+    }
+    
+    ESP_LOGI(TAG, "Basic Information attributes updated successfully");
+    return ESP_OK;
+}
+#endif
+
 extern "C" void app_main()
 {
     /* Initialize the ESP NVS layer */
@@ -165,6 +283,14 @@ extern "C" void app_main()
     node::config_t node_config;
     node_t *node = node::create(&node_config, app_attribute_update_cb, app_identification_cb);
     ABORT_APP_ON_FAILURE(node != nullptr, ESP_LOGE(TAG, "Failed to create Matter node"));
+
+#if defined(CONFIG_BASIC_INFORMATION_UPDATE_PRE)
+    /* Update Basic Information attributes immediately after node creation */
+    err = update_basic_information_attributes();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to update basic information attributes: %s", esp_err_to_name(err));
+    }
+#endif    
 
     // add temperature sensor device
     temperature_sensor::config_t temp_sensor_config;
@@ -225,4 +351,14 @@ extern "C" void app_main()
     /* Matter start */
     err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
-}
+
+#if defined(CONFIG_BASIC_INFORMATION_UPDATE_POST)
+    /* Update Basic Information attributes (ProductName, VendorName, etc.) */
+    vTaskDelay(pdMS_TO_TICKS(10000)); // Matter 초기화 완료 대기
+    err = update_basic_information_attributes();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to update basic information attributes, but continuing...");
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Matter 초기화 완료 대기
+#endif    
+ }
