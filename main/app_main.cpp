@@ -318,6 +318,7 @@ extern "C" void app_main()
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to initialize temperature sensor driver"));
 #endif
 
+#if 0    
     // add the occupancy sensor
     occupancy_sensor::config_t occupancy_sensor_config;
     occupancy_sensor_config.occupancy_sensing.occupancy_sensor_type =
@@ -329,7 +330,7 @@ extern "C" void app_main()
     ABORT_APP_ON_FAILURE(occupancy_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create occupancy_sensor endpoint"));
 
     // initialize occupancy sensor driver (pir)
-#if 0    
+
     static pir_sensor_config_t pir_config = {
         .cb = occupancy_sensor_notification,
         .endpoint_id = endpoint::get_id(occupancy_sensor_ep),
