@@ -1,5 +1,5 @@
-# .github/workflows/build-no-git.yml
-name: ESP32-C3 No-Git Build
+# .github/workflows/build-matter-complete.yml
+name: ESP32-C3 Complete Matter Build
 
 on:
   push:
@@ -16,122 +16,313 @@ jobs:
     # 1. 코드 다운로드
     - name: 코드 체크아웃
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-    # 2. ESP-Matter 컴포넌트를 ZIP으로 직접 다운로드
-    - name: ESP-Matter 컴포넌트 다운로드
-      run: |
-        # 작업 디렉토리 생성
-        mkdir -p /opt/esp-matter-components
-        cd /opt/esp-matter-components
-        
-        # ESP-Matter 메인 파일들 다운로드 (ZIP)
-        echo "📦 ESP-Matter 메인 컴포넌트 다운로드 중..."
-        wget -q --no-check-certificate https://github.com/espressif/esp-matter/archive/refs/heads/main.zip -O esp-matter.zip
-        unzip -q esp-matter.zip
-        mv esp-matter-main esp-matter
-        rm esp-matter.zip
-        
-        # ConnectedHomeIP 컴포넌트 다운로드 (핵심 부분만)
-        echo "📦 ConnectedHomeIP 컴포넌트 다운로드 중..."
-        mkdir -p esp-matter/connectedhomeip
-        cd esp-matter/connectedhomeip
-        wget -q --no-check-certificate https://github.com/project-chip/connectedhomeip/archive/refs/heads/master.zip -O chip.zip
-        unzip -q chip.zip
-        mv connectedhomeip-master connectedhomeip
-        rm chip.zip
-        
-        # 환경변수 설정
-        echo "ESP_MATTER_PATH=/opt/esp-matter-components/esp-matter" >> $GITHUB_ENV
-        echo "MATTER_SDK_PATH=/opt/esp-matter-components/esp-matter/connectedhomeip/connectedhomeip" >> $GITHUB_ENV
-
-    # 3. 필요한 패키지만 설치
+    # 2. Git 및 필요한 도구 설치
     - name: 필요한 도구 설치
       run: |
         apt-get update -qq
-        apt-get install -y -qq python3-pip
+        apt-get install -y -qq git curl wget unzip python3-pip build-essential
 
-    # 4. 프로젝트 빌드
-    - name: 프로젝트 빌드
+    # 3. ESP-Matter 완전 설치 (git submodule 포함)
+    - name: ESP-Matter 완전 설치
       run: |
-        # ESP-IDF 환경 활성화
+        echo "📦 ESP-Matter 완전 설치 시작..."
+        
+        # 작업 디렉토리 생성
+        mkdir -p /opt/esp-matter
+        cd /opt/esp-matter
+        
+        # Git 설정 (submodule을 위해 필요)
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        git config --global init.defaultBranch main
+        
+        # ESP-Matter 클론 (recursive submodules 포함)
+        echo "📥 ESP-Matter 메인 저장소 클론 중..."
+        git clone --recursive --depth 1 --jobs 8 https://github.com/espressif/esp-matter.git .
+        
+        # 필수 서브모듈들이 제대로 초기화되었는지 확인
+        echo "🔍 필수 컴포넌트 확인 중..."
+        if [ ! -d "connectedhomeip/connectedhomeip" ]; then
+          echo "ConnectedHomeIP 서브모듈 수동 초기화..."
+          git submodule update --init --recursive connectedhomeip
+        fi
+        
+        # 필수 디렉토리들 확인
+        required_dirs=(
+          "connectedhomeip/connectedhomeip/config/esp32/components"
+          "examples/common"
+          "components"
+        )
+        
+        for dir in "${required_dirs[@]}"; do
+          if [ ! -d "$dir" ]; then
+            echo "❌ 필수 디렉토리 누락: $dir"
+            exit 1
+          else
+            echo "✅ 확인됨: $dir"
+          fi
+        done
+        
+        # 환경변수 설정
+        echo "ESP_MATTER_PATH=/opt/esp-matter" >> $GITHUB_ENV
+        echo "MATTER_SDK_PATH=/opt/esp-matter/connectedhomeip/connectedhomeip" >> $GITHUB_ENV
+
+    # 4. ESP-Matter 의존성 설치
+    - name: ESP-Matter 의존성 설치
+      run: |
+        echo "⚙️ ESP-Matter 의존성 설치 중..."
+        cd /opt/esp-matter
+        
+        # ESP-IDF 환경 먼저 활성화
         . $IDF_PATH/export.sh
         
+        # ESP-Matter 설치 스크립트 실행
+        ./install.sh
+        
+        # ESP-Matter 환경 활성화
+        . ./export.sh
+        
+        echo "✅ ESP-Matter 설치 완료"
+
+    # 5. 프로젝트 빌드 환경 확인
+    - name: 빌드 환경 확인
+      run: |
+        echo "🔍 빌드 환경 확인 중..."
+        
+        # 환경변수 확인
+        echo "ESP_MATTER_PATH: $ESP_MATTER_PATH"
+        echo "MATTER_SDK_PATH: $MATTER_SDK_PATH"
+        echo "IDF_PATH: $IDF_PATH"
+        
+        # 필수 디렉토리들 존재 확인
+        ls -la $ESP_MATTER_PATH/
+        ls -la $ESP_MATTER_PATH/connectedhomeip/connectedhomeip/config/esp32/components/ || echo "ESP32 컴포넌트 디렉토리 확인 필요"
+        
+        # CMakeLists.txt 확인
+        echo "📋 CMakeLists.txt 내용:"
+        head -20 CMakeLists.txt
+
+    # 6. 프로젝트 빌드
+    - name: Matter 프로젝트 빌드
+      run: |
+        echo "🏗️ ESP32-C3 Matter 센서 빌드 중..."
+        
+        # 환경 재설정
+        . $IDF_PATH/export.sh
+        . $ESP_MATTER_PATH/export.sh
+        
         # 환경변수 재확인
-        export ESP_MATTER_PATH=/opt/esp-matter-components/esp-matter
-        export MATTER_SDK_PATH=/opt/esp-matter-components/esp-matter/connectedhomeip/connectedhomeip
+        export ESP_MATTER_PATH=/opt/esp-matter
+        export MATTER_SDK_PATH=/opt/esp-matter/connectedhomeip/connectedhomeip
         
-        echo "✅ ESP_MATTER_PATH: $ESP_MATTER_PATH"
-        echo "✅ MATTER_SDK_PATH: $MATTER_SDK_PATH" 
-        echo "✅ IDF_PATH: $IDF_PATH"
+        echo "빌드 환경:"
+        echo "  ESP_MATTER_PATH=$ESP_MATTER_PATH"
+        echo "  MATTER_SDK_PATH=$MATTER_SDK_PATH"
+        echo "  IDF_PATH=$IDF_PATH"
         
-        # 빌드 실행
+        # 타겟 설정 및 빌드
         idf.py set-target esp32c3
         idf.py build
+        
+        echo "✅ Matter 빌드 완료!"
 
-    # 5. 바이너리 업로드
-    - name: 바이너리 업로드
+    # 7. 빌드 결과 확인
+    - name: 빌드 결과 확인
+      run: |
+        echo "📊 빌드 결과 확인:"
+        
+        # 생성된 파일들 확인
+        if [ -f "build/ESP32C3_MATTER_BME680.bin" ]; then
+          echo "✅ 메인 펌웨어: $(stat -c%s build/ESP32C3_MATTER_BME680.bin) bytes"
+        else
+          echo "❌ 메인 펌웨어 파일을 찾을 수 없습니다"
+          ls -la build/*.bin || echo "bin 파일 없음"
+        fi
+        
+        if [ -f "build/bootloader/bootloader.bin" ]; then
+          echo "✅ 부트로더: $(stat -c%s build/bootloader/bootloader.bin) bytes"
+        fi
+        
+        if [ -f "build/partition_table/partition-table.bin" ]; then
+          echo "✅ 파티션 테이블: $(stat -c%s build/partition_table/partition-table.bin) bytes"
+        fi
+        
+        # 전체 플래시 크기 계산
+        total_size=0
+        for file in build/*.bin build/bootloader/*.bin build/partition_table/*.bin; do
+          if [ -f "$file" ]; then
+            size=$(stat -c%s "$file")
+            total_size=$((total_size + size))
+          fi
+        done
+        echo "📏 총 펌웨어 크기: $total_size bytes"
+
+    # 8. Matter 바이너리 업로드
+    - name: Matter 바이너리 업로드
       uses: actions/upload-artifact@v4
       with:
-        name: esp32c3-no-git-${{ github.run_number }}
+        name: esp32c3-matter-complete-${{ github.run_number }}
         path: |
           build/*.bin
           build/*.elf
+          build/*.map
           build/bootloader/bootloader.bin
           build/partition_table/partition-table.bin
         retention-days: 30
 
-    # 6. 플래시 가이드 생성
-    - name: 플래시 가이드 생성
+    # 9. Matter 플래시 가이드 생성
+    - name: Matter 플래시 가이드 생성
       run: |
-        cat > flash_guide.txt << 'EOF'
-        # ESP32-C3 플래시 가이드
+        cat > matter_flash_guide.txt << 'EOF'
+        # ESP32-C3 Matter 센서 플래시 가이드
         
-        ## 1. 필요한 파일들
-        - ESP32C3_MATTER_BME680.bin (메인 펌웨어)
-        - bootloader.bin (부트로더)
-        - partition-table.bin (파티션 테이블)
+        ## 🎯 Matter 센서 기능
+        - 온도/습도 센서 (SHTC3) - I2C
+        - 움직임 감지 센서 (PIR) - GPIO
+        - Matter 1.4 호환
+        - WiFi 연결 지원
+        - OTA 업데이트 지원
         
-        ## 2. 플래시 명령어
+        ## 🔌 하드웨어 연결
         
-        ### Linux/macOS:
+        ### SHTC3 센서 (I2C):
+        | ESP32-C3 Pin | SHTC3 Pin |
+        |--------------|-----------|
+        | GPIO 4       | SDA       |
+        | GPIO 5       | SCL       |
+        | 3V3          | VCC       |
+        | GND          | GND       |
+        
+        ### PIR 센서:
+        | ESP32-C3 Pin | PIR Pin |
+        |--------------|---------|
+        | GPIO 7       | Signal  |
+        | 3V3          | VCC     |
+        | GND          | GND     |
+        
+        ## 📱 펌웨어 플래시
+        
+        ### 1. esptool 설치
+        ```bash
+        pip install esptool
+        ```
+        
+        ### 2. 펌웨어 플래시
+        ```bash
+        # Linux/macOS
         esptool.py --chip esp32c3 --port /dev/ttyUSB0 --baud 460800 write_flash \
           0x0 bootloader.bin \
-          0x8000 partition-table.bin \
-          0x10000 ESP32C3_MATTER_BME680.bin
+          0xc000 partition-table.bin \
+          0x20000 ESP32C3_MATTER_BME680.bin
         
-        ### Windows:
+        # Windows  
         esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash \
           0x0 bootloader.bin \
-          0x8000 partition-table.bin \
-          0x10000 ESP32C3_MATTER_BME680.bin
+          0xc000 partition-table.bin \
+          0x20000 ESP32C3_MATTER_BME680.bin
+        ```
         
-        ## 3. 포트 찾기
-        - Linux: /dev/ttyUSB0, /dev/ttyACM0
-        - Windows: COM3, COM4, COM5 등 (장치관리자에서 확인)
-        - macOS: /dev/cu.usbserial-* 
-        
-        ## 4. esptool 설치
-        pip install esptool
-        
-        ## 5. 모니터링
+        ### 3. 시리얼 모니터
+        ```bash
         esptool.py --chip esp32c3 --port [포트] monitor
+        ```
+        
+        ## 🌐 Matter 설정
+        
+        ### 1. WiFi 연결 대기
+        시리얼 모니터에서 WiFi 설정 메시지 확인
+        
+        ### 2. Matter 커미셔닝
+        ```bash
+        # chip-tool 사용 예시
+        chip-tool pairing ble-wifi 1 "WIFI_SSID" "WIFI_PASSWORD" 20202021 3840
+        ```
+        
+        ### 3. 센서 데이터 읽기
+        ```bash
+        # 온도 센서 (엔드포인트 1)
+        chip-tool temperaturemeasurement read measured-value 1 1
+        
+        # 습도 센서 (엔드포인트 2)
+        chip-tool relativehumiditymeasurement read measured-value 1 2
+        
+        # 움직임 센서 (엔드포인트 3)
+        chip-tool occupancysensing read occupancy 1 3
+        ```
+        
+        ### 4. 속성 구독 (자동 업데이트)
+        ```bash
+        # 온도 변화 구독 (3초마다, 최대 10분)
+        chip-tool temperaturemeasurement subscribe measured-value 3 600 1 1
+        
+        # 습도 변화 구독
+        chip-tool relativehumiditymeasurement subscribe measured-value 3 600 1 2
+        
+        # 움직임 감지 구독
+        chip-tool occupancysensing subscribe occupancy 3 600 1 3
+        ```
+        
+        ## 🔧 문제 해결
+        
+        ### WiFi 연결 안됨
+        - 시리얼 모니터에서 WiFi 상태 확인
+        - 2.4GHz WiFi 사용 (5GHz 불가)
+        - SSID/비밀번호 정확성 확인
+        
+        ### Matter 페어링 실패
+        - 셋업 코드: 20202021
+        - Discriminator: 3840
+        - 팩토리 리셋: 리셋 버튼 5초 이상 누르기
+        
+        ### 센서 데이터 안나옴
+        - 하드웨어 연결 재확인
+        - I2C 풀업 저항 (4.7kΩ) 확인
+        - 전원 공급 상태 확인
+        
+        ## 📊 기대 결과
+        
+        정상 동작시 시리얼 모니터 출력:
+        ```
+        I (1234) app_main: Matter sensor started
+        I (2345) app_main: WiFi connected
+        I (3456) app_main: Matter commissioning window opened
+        I (4567) app_main: Temperature: 25.6°C
+        I (5678) app_main: Humidity: 45.2%
+        I (6789) app_main: Motion detected: true
+        ```
+        
+        Matter 컨트롤러에서 센서 값 확인 가능
         EOF
 
-    - name: 플래시 가이드 업로드
+    - name: Matter 가이드 업로드
       uses: actions/upload-artifact@v4
       with:
-        name: flash-guide-${{ github.run_number }}
-        path: flash_guide.txt
+        name: matter-guide-${{ github.run_number }}
+        path: matter_flash_guide.txt
         retention-days: 30
 
-    # 7. 빌드 결과 확인
-    - name: 빌드 결과
+    # 10. 최종 결과
+    - name: Matter 빌드 완료
       run: |
-        echo "🎉 Git 없는 빌드 성공!"
-        echo "📁 생성된 파일들:"
-        find build -name "*.bin" -o -name "*.elf" | head -5
+        echo "🎉 ESP32-C3 Matter 센서 빌드 완료!"
         echo ""
-        echo "📦 다운로드 방법:"
-        echo "  1. GitHub → Actions → 이 빌드 클릭"
-        echo "  2. Artifacts 섹션에서 파일 다운로드"
-        echo "  3. 압축 해제 후 ESP32-C3에 플래시"
+        echo "📦 제공되는 기능:"
+        echo "  ✅ Matter 1.4 호환 센서"
+        echo "  ✅ 온도/습도 측정 (SHTC3)"
+        echo "  ✅ 움직임 감지 (PIR)"
+        echo "  ✅ WiFi 연결"
+        echo "  ✅ OTA 업데이트"
+        echo ""
+        echo "📁 다운로드 파일:"
+        echo "  • esp32c3-matter-complete-${{ github.run_number }}: 펌웨어 파일들"
+        echo "  • matter-guide-${{ github.run_number }}: 상세 사용법"
+        echo ""
+        echo "🚀 다음 단계:"
+        echo "  1. Artifacts에서 파일 다운로드"
+        echo "  2. 하드웨어 연결 (가이드 참조)"
+        echo "  3. 펌웨어 플래시"
+        echo "  4. Matter 컨트롤러로 페어링"
+        echo "  5. 센서 데이터 확인"
