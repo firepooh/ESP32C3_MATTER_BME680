@@ -1,0 +1,54 @@
+name: ESP32-C3 Build
+
+# 언제 실행할지 설정
+on:
+  push:
+    branches: [ main, develop ]  # main 또는 develop 브랜치에 푸시할 때
+  pull_request:
+    branches: [ main ]           # main 브랜치로 PR할 때
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 코드 다운로드
+    - name: 코드 체크아웃
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # 2. ESP-IDF 설치 (캐시 사용으로 빠르게)
+    - name: ESP-IDF 설치
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: v5.4.2
+        target: esp32c3
+
+    # 3. ESP-Matter 설치
+    - name: ESP-Matter 설치
+      run: |
+        cd /opt
+        sudo git clone --recursive https://github.com/espressif/esp-matter.git
+        cd esp-matter
+        sudo ./install.sh
+        echo "ESP_MATTER_PATH=/opt/esp-matter" >> $GITHUB_ENV
+
+    # 4. 프로젝트 빌드
+    - name: 프로젝트 빌드
+      run: |
+        source /opt/esp-matter/export.sh
+        idf.py set-target esp32c3
+        idf.py build
+
+    # 5. 빌드된 바이너리 파일들 업로드
+    - name: 바이너리 파일 업로드
+      uses: actions/upload-artifact@v4
+      with:
+        name: esp32c3-firmware-${{ github.run_number }}
+        path: |
+          build/*.bin
+          build/*.elf
+          build/bootloader/bootloader.bin
+          build/partition_table/partition-table.bin
+        retention-days: 30  # 30일 동안 보관
